@@ -9,6 +9,8 @@
 
 #include <kodi/AddonBase.h>
 
+//#define KODI_VERSION_22
+
 class ATTR_DLL_LOCAL CSettings
 {
 public:

@@ -1,6 +1,15 @@
 # build artifacts
+build-addon/
 build/
 pvr.*/addon.xml
+CMakeFiles
+pvr.magenta-prefix/tmp
+pvr.magenta-prefix/src
+/cmake_install.cmake
+/CMakeCache.txt
+/Makefile
+/depends/Makefile
+/depends/cmake_install.cmake
 
 # Debian build files
 debian/changelog

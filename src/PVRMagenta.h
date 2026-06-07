@@ -3,12 +3,13 @@
  *  Copyright (C) 2011 Pulse-Eight (http://www.pulse-eight.com/)
  *
  *  SPDX-License-Identifier: GPL-2.0-or-later
- *  See LICENSE.md for more information.
+ *  See LICENSE.md for more information .
  */
 
 #include <string>
 #include <vector>
 
+#include <kodi/General.h>
 #include <kodi/addon-instance/PVR.h>
 #include "Settings.h"
 #include "http/HttpClient.h"
@@ -318,6 +319,9 @@ public:
   //PVR_ERROR GetSignalStatus(int channelUid, kodi::addon::PVRSignalStatus& signalStatus) override;
   PVR_ERROR GetChannelStreamProperties(
       const kodi::addon::PVRChannel& channel,
+  #ifdef KODI_VERSION_22
+      PVR_SOURCE source,
+  #endif
       std::vector<kodi::addon::PVRStreamProperty>& properties) override;
   PVR_ERROR GetRecordingStreamProperties(
       const kodi::addon::PVRRecording& recording,

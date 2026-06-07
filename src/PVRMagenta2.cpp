@@ -127,7 +127,7 @@ bool CPVRMagenta2::GetMyGenres()
         subGenre.secondaryGenreType = Utils::JsonIntOrZero(secondaryGenres[j], "genreSubType");
         genre.secondaryGenres.emplace_back(subGenre);
       }
-    }
+   }
     m_genres.emplace_back(genre);
     kodi::Log(ADDON_LOG_DEBUG, "Added genre: %s %i %i", genre.primaryGenre.c_str(), genre.genreType, genre.genreSubType);
   }
@@ -1152,7 +1152,11 @@ PVR_ERROR CPVRMagenta2::GetChannels(bool bRadio, kodi::addon::PVRChannelsResultS
 }
 
 PVR_ERROR CPVRMagenta2::GetChannelStreamProperties(
-    const kodi::addon::PVRChannel& channel, std::vector<kodi::addon::PVRStreamProperty>& properties)
+    const kodi::addon::PVRChannel& channel, 
+    #ifdef KODI_VERSION_22
+    PVR_SOURCE source,
+    #endif
+    std::vector<kodi::addon::PVRStreamProperty>& properties)
 {
   kodi::Log(ADDON_LOG_DEBUG, "function call: [%s]", __FUNCTION__);
 
@@ -1400,50 +1404,67 @@ bool CPVRMagenta2::GetEPGFeed(const int& channelNumber, const std::string& baseU
     return false;
   }
 
-  if (!doc.HasMember("entries") || (doc["entries"].GetType() == 0))
+  if (!doc.HasMember("entries") || !doc["entries"].IsArray())
   {
-    kodi::Log(ADDON_LOG_ERROR, "Failed to get EPG feed");
+    kodi::Log(ADDON_LOG_ERROR, "Failed to get EPG feed - entries missing or invalid");
     return false;
   }
 
-  std::string guids = "";
-  int entryCount = 0;
+  // OPTIMIERUNG 1: std::string durch std::vector<std::string> ersetzen (verhindert Reallocations)
+  // Zudem Speicher direkt für den Batch (300) vorreservieren.
+  std::vector<std::string> guidVector;
+  guidVector.reserve(300);
+
   const rapidjson::Value& entries = doc["entries"];
   for (rapidjson::SizeType i = 0; i < entries.Size(); i++)
   {
-    if (!entries[i].HasMember("listings") || (entries[i]["listings"].GetType() == 0))
+    if (!entries[i].HasMember("listings") || !entries[i]["listings"].IsArray())
     {
-      kodi::Log(ADDON_LOG_ERROR, "Failed to get EPG listings");
-      //return false;
+      kodi::Log(ADDON_LOG_ERROR, "Failed to get EPG listings for entry %u", i);
+      continue; // Weitergehen statt unsauberem Error-Log
     }
+
     const rapidjson::Value& listings = entries[i]["listings"];
     for (rapidjson::SizeType j = 0; j < listings.Size(); j++)
     {
-  //    AddEPGEntry(channelNumber, listings[j], results);
-      if (listings[j].HasMember("program") && listings[j]["program"].GetType() != 0) {
-        const rapidjson::Value& program = listings[j]["program"];
-        guids += Utils::JsonStringOrEmpty(program, "guid") + "|";
-        entryCount++;
-      }
-      if ((entryCount == 300) || (j == listings.Size()-1))
+      if (listings[j].HasMember("program") && listings[j]["program"].IsObject()) 
       {
-        guids.erase(guids.end() - 1);
-      //  kodi::Log(ADDON_LOG_DEBUG, "Guids found %s", guids.c_str());
+        const rapidjson::Value& program = listings[j]["program"];
+        std::string guid = Utils::JsonStringOrEmpty(program, "guid");
+        if (!guid.empty()) {
+          guidVector.push_back(std::move(guid)); // OPTIMIERUNG 2: std::move spart String-Kopien
+        }
+      }
+
+      // OPTIMIERUNG 3: Die Batch-Bedingung korrigiert. 
+      // Wir prüfen das Schleifenende der ÄUẞEREN Schleife (i) und INNEREN Schleife (j) 
+      // gemeinsam, um die 300er-Batches über Entries hinweg vollzubekommen.
+      bool isLastElement = (i == entries.Size() - 1) && (j == listings.Size() - 1);
+
+      if (guidVector.size() == 300 || (isLastElement && !guidVector.empty()))
+      {
+        // OPTIMIERUNG 4: GUIDs effizient mit Stringstream zusammenbauen (Vermeidet O(N^2) Kopier-Verhalten)
+        std::stringstream ss;
+        for (size_t k = 0; k < guidVector.size(); ++k) {
+          if (k > 0) ss << "|";
+          ss << guidVector[k];
+        }
+        std::string guids = ss.str();
 
         std::string programsUrl = m_allProgramsFeedUrl + "?form=cjson" +
                                                          "&byGuid=" + Utils::UrlEncode(guids) +
-                                                         "&range=1-" + std::to_string(entryCount) +
+                                                         "&range=1-" + std::to_string(guidVector.size()) +
                                                          "&fields=guid,title,description,listings.startTime,"
                                                          "listings.endTime,thumbnails,tvSeasonNumber,tvSeasonEpisodeNumber,"
                                                          "year,secondaryTitle,seriesId,ratings,dt$originalIds,"
-                                                         "credits.creditType,credits.personName,shortDescription,tags"; //programType
+                                                         "credits.creditType,credits.personName,shortDescription,tags";
 
         rapidjson::Document doc2;
         if (!GetPostJson(programsUrl, "", doc2)) {
           return false;
         }
 
-        if (!doc2.HasMember("entries") || (doc2["entries"].GetType() == 0))
+        if (!doc2.HasMember("entries") || !doc2["entries"].IsArray())
         {
           kodi::Log(ADDON_LOG_ERROR, "Failed to get Programs feed");
           return false;
@@ -1454,8 +1475,9 @@ bool CPVRMagenta2::GetEPGFeed(const int& channelNumber, const std::string& baseU
         {
           AddEPGEntry(channelNumber, entries2[k], results);
         }
-        guids = "";
-        entryCount = 0;
+
+        // Batch leeren und Speicher für die nächsten 300 freihalten
+        guidVector.clear();
       }
     }
   }
@@ -1483,59 +1505,18 @@ PVR_ERROR CPVRMagenta2::GetEPGForChannel(int channelUid,
 
 PVR_ERROR CPVRMagenta2::IsEPGTagPlayable(const kodi::addon::PVREPGTag& tag, bool& bIsPlayable)
 {
-  kodi::Log(ADDON_LOG_DEBUG, "function call: [%s]", __FUNCTION__);
+  kodi::Log(ADDON_LOG_DEBUG, "function call: [%s] Check", __FUNCTION__);
   bIsPlayable = false;
 
-  std::stringstream ss;
-  ss<< std::hex << tag.GetUniqueBroadcastId(); // int decimal_value
-  std::string epgId ( ss.str() );
-
-  while (epgId.size() < 8)
-    epgId.insert(0, "0");
-
-  kodi::Log(ADDON_LOG_DEBUG, "Checking if EPGTag with UID: %s is playable", epgId.c_str());
-
-  std::string programsUrl = m_allProgramsFeedUrl + "?form=cjson" +
-                                                   "&byGuid=" + "telekom.de-" + epgId +
-                                                   "&range=1-1" +
-                                                   "&fields=media.publicUrl,media.availableDate," +
-                                                   "media.expirationDate"; //programType
-
-  rapidjson::Document doc;
-  if (!GetPostJson(programsUrl, "", doc)) {
-    return PVR_ERROR_NO_ERROR;
-  }
-
-  if (!doc.HasMember("entries"))
-  {
-    kodi::Log(ADDON_LOG_ERROR, "Failed to get Programs feed");
-    return PVR_ERROR_NO_ERROR;
-  }
-
-  const rapidjson::Value& entries = doc["entries"];
-
-  if (entries.Size() != 1)
-    return PVR_ERROR_NO_ERROR;
-
-  if (!entries[0].HasMember("media"))
-    return PVR_ERROR_NO_ERROR;
-
-  const rapidjson::Value& media = entries[0]["media"];
-
-  if (media.Size() == 0)
-    return PVR_ERROR_NO_ERROR;
-
-  if (!media[0].HasMember("publicUrl") || !media[0].HasMember("availableDate") || !media[0].HasMember("expirationDate"))
-    return PVR_ERROR_NO_ERROR;
-
-  time_t availableDate = (time_t) (Utils::JsonInt64OrZero(media[0], "availableDate") / 1000);
-  time_t expirationDate = (time_t) (Utils::JsonInt64OrZero(media[0], "expirationDate") / 1000);
-  std::string publicUrl = Utils::JsonStringOrEmpty(media[0], "publicUrl");
   auto current_time = time(NULL);
+  auto limitTime = current_time - (4 * 60 * 60);
 
-  if (current_time > availableDate && current_time < expirationDate && !publicUrl.empty())
+  time_t startTime = tag.GetStartTime();
+  time_t endTime = tag.GetEndTime();
+
+  if( ((current_time > startTime) && (current_time < endTime)) || 
+      ((current_time > startTime) && (current_time > endTime) && (startTime > limitTime)) )
   {
-    kodi::Log(ADDON_LOG_DEBUG, "Found public URL: %s", publicUrl.c_str());
     bIsPlayable = true;
   }
 

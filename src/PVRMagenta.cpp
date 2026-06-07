@@ -1879,11 +1879,19 @@ PVR_ERROR CPVRMagenta::GetChannels(bool bRadio, kodi::addon::PVRChannelsResultSe
 }
 
 PVR_ERROR CPVRMagenta::GetChannelStreamProperties(
-    const kodi::addon::PVRChannel& channel, std::vector<kodi::addon::PVRStreamProperty>& properties)
+    const kodi::addon::PVRChannel& channel, 
+    #ifdef KODI_VERSION_22
+    PVR_SOURCE source,
+    #endif
+    std::vector<kodi::addon::PVRStreamProperty>& properties)
 {
   kodi::Log(ADDON_LOG_DEBUG, "function call: [%s]", __FUNCTION__);
   if (m_isMagenta2)
-    return m_magenta2->GetChannelStreamProperties(channel, properties);
+      return m_magenta2->GetChannelStreamProperties(channel, 
+    #ifdef KODI_VERSION_22
+      source, 
+    #endif
+      properties);
 
   MagentaChannel addonChannel;
   if (!GetChannel(channel.GetUniqueId(), addonChannel))
