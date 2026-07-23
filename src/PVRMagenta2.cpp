@@ -1034,15 +1034,47 @@ PVR_ERROR CPVRMagenta2::SetStreamProperties(std::vector<kodi::addon::PVRStreamPr
 
     kodi::Log(ADDON_LOG_DEBUG, "ReleasePid: %s", releasePid.c_str());
 
-    std::string lkey = m_widevineLicenseAcquisitionUrl + "?account=" + Utils::UrlEncode(account) +
-                                                         "&releasePid=" + releasePid +
-                                                         "&token=" + personaToken +
-                                                         "&schema=1.0";
+    std::string serverUrl = m_widevineLicenseAcquisitionUrl + "?account=" + Utils::UrlEncode(account) +
+                                                              "&releasePid=" + releasePid +
+                                                              "&token=" + personaToken +
+                                                              "&schema=1.0";
 
-//    std::string lkey = m_widevineLicenseAcquisitionUrl + "?releasePid=" + releasePid +
-//                                                         "&schema=1.0";
+//    std::string serverUrl = m_widevineLicenseAcquisitionUrl + "?releasePid=" + releasePid +
+//                                                              "&schema=1.0";
 
-    lkey += "|"
+    kodi::Log(ADDON_LOG_DEBUG, "License server url: %s", serverUrl.c_str());
+    properties.emplace_back(PVR_STREAM_PROPERTY_MIMETYPE, "application/xml+dash");
+    properties.emplace_back(PVR_STREAM_PROPERTY_INPUTSTREAM, "inputstream.adaptive");
+    properties.emplace_back("inputstream.adaptive.manifest_headers", "User-Agent=" + Magenta2Parameters[m_platform].user_agent);
+    properties.emplace_back("inputstream.adaptive.stream_headers", "User-Agent=" + Magenta2Parameters[m_platform].user_agent);
+
+#ifdef KODI_VERSION_22
+    // Kodi 22 / inputstream.adaptive v22 removed license_type/license_url* and
+    // replaced them by a single inputstream.adaptive.drm JSON property.
+    std::string reqHeaders = "User-Agent=" + Utils::UrlEncode(Magenta2Parameters[m_platform].user_agent);
+
+    rapidjson::Document drmDoc;
+    drmDoc.SetObject();
+    rapidjson::Document::AllocatorType& allocator = drmDoc.GetAllocator();
+
+    rapidjson::Value license(rapidjson::kObjectType);
+    license.AddMember("server_url", rapidjson::Value(serverUrl.c_str(), allocator), allocator);
+    license.AddMember("req_headers", rapidjson::Value(reqHeaders.c_str(), allocator), allocator);
+
+    rapidjson::Value widevine(rapidjson::kObjectType);
+    widevine.AddMember("license", license, allocator);
+
+    drmDoc.AddMember("com.widevine.alpha", widevine, allocator);
+
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+    drmDoc.Accept(writer);
+
+    std::string drm = buffer.GetString();
+    kodi::Log(ADDON_LOG_DEBUG, "inputstream.adaptive.drm: %s", drm.c_str());
+    properties.emplace_back("inputstream.adaptive.drm", drm);
+#else
+    std::string lkey = serverUrl + "|"
 //            "Origin=https://web2.magentatv.de"
 //            "&Referer=https://web2.magentatv.de"
 //            "&User-Agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
@@ -1051,10 +1083,6 @@ PVR_ERROR CPVRMagenta2::SetStreamProperties(std::vector<kodi::addon::PVRStreamPr
             "&Content-Type= "
             "|R{SSM}|";
     kodi::Log(ADDON_LOG_DEBUG, "Licence Key: %s", lkey.c_str());
-    properties.emplace_back(PVR_STREAM_PROPERTY_MIMETYPE, "application/xml+dash");
-    properties.emplace_back(PVR_STREAM_PROPERTY_INPUTSTREAM, "inputstream.adaptive");
-    properties.emplace_back("inputstream.adaptive.manifest_headers", "User-Agent=" + Magenta2Parameters[m_platform].user_agent);
-    properties.emplace_back("inputstream.adaptive.stream_headers", "User-Agent=" + Magenta2Parameters[m_platform].user_agent);
     //properties.emplace_back("inputstream.adaptive.license_key", lkey);
     std::string urlFirst;
     std::string urlSecond;
@@ -1069,6 +1097,7 @@ PVR_ERROR CPVRMagenta2::SetStreamProperties(std::vector<kodi::addon::PVRStreamPr
 //    properties.emplace_back("inputstream.adaptive.play_timeshift_buffer", playTimeshiftBuffer ? "true" : "false");
 //    properties.emplace_back("inputstream.adaptive.manifest_type", "mpd");
     properties.emplace_back("inputstream.adaptive.license_type", "com.widevine.alpha");
+#endif
   }
 
 //  properties.emplace_back("inputstream.adaptive.manifest_update_parameter", "full");

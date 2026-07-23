@@ -1,6 +1,9 @@
 # build artifacts
-build-addon/
 build/
+build-addon/
+build-android*/
+build-linux/
+/pvr.magenta-*.zip
 pvr.*/addon.xml
 CMakeFiles
 pvr.magenta-prefix/tmp

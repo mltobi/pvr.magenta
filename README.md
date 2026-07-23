@@ -38,6 +38,35 @@ Versions from 21.9.0 also support Magenta TV 2.0. For Magenta TV 2.0 you have to
 7. `cmake -DADDONS_TO_BUILD=pvr.magenta -DADDON_SRC_PREFIX=../.. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=../../xbmc/addons -DPACKAGE_ZIP=1 ../../xbmc/cmake/addons`
 8. `make`
 
+Alternatively, use the helper script `build-linux.sh` to build a ready-to-install
+add-on ZIP in one step:
+
+```sh
+# ./build-linux.sh <KODI-SRC-DIR>
+./build-linux.sh ~/github/kodi-source
+```
+
+The build type defaults to `Release` (override with `BUILD_TYPE=Debug`). The
+installable ZIP is printed at the end of the build (under `build-linux/build/zips/`).
+
+### Android
+
+Use the helper script `build-android.sh` to cross-compile a ready-to-install
+add-on ZIP with the Android NDK. It generates the required CMake toolchain
+automatically.
+
+```sh
+export ANDROID_NDK=$HOME/android-tools/android-ndk-r29   # required
+export ANDROID_API=29                                    # optional (default: 29)
+
+# ./build-android.sh <KODI-SRC-DIR> [ANDROID_ABI]
+./build-android.sh ~/github/kodi-source arm64-v8a
+```
+
+Supported `ANDROID_ABI` values: `arm64-v8a` (default, e.g. NVIDIA Shield),
+`armeabi-v7a`, `x86_64`, `x86`. The installable ZIP is printed at the end of the
+build (under `build-android-<abi>/build/zips/`).
+
 ## Notes
 
 - Tested building it for Linux/x86 and Android/aarch64

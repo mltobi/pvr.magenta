@@ -7,6 +7,13 @@ find_package(Kodi REQUIRED)
 find_package(RapidJSON 1.0.2 REQUIRED)
 find_package(TinyXML2 REQUIRED)
 
+# Kodi 22 changed the PVR API (PVR_SOURCE param in GetChannelStreamProperties)
+# and inputstream.adaptive dropped the license_* properties in favour of the
+# inputstream.adaptive.drm JSON property. Enable the matching code paths.
+if(DEFINED APP_VERSION_MAJOR AND NOT APP_VERSION_MAJOR LESS 22)
+  add_definitions(-DKODI_VERSION_22)
+endif()
+
 include_directories(${KODI_INCLUDE_DIR}/.. # Hack way with "/..", need bigger Kodi cmake rework to match right include ways
                     ${RAPIDJSON_INCLUDE_DIRS}
                     ${TINYXML2_INCLUDE_DIRS}
