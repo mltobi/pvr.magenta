@@ -64,7 +64,19 @@ fi
 VERSION="$( basename "$SRC_ZIP" .zip )"
 VERSION="${VERSION#"$ADDON_NAME"-}"            # strip leading "pvr.magenta-"
 DEST_ZIP="$SCRIPT_DIR/$ADDON_NAME-$VERSION-linux.zip"
-cp -f "$SRC_ZIP" "$DEST_ZIP"
+
+# CMake/CPack writes the ZIP in streaming mode: every entry gets the data
+# descriptor bit (general purpose flag bit 3) set and a compressed size of 0 in
+# the local file header. Kodi's own CZipManager reads the compressed size from
+# the local file header, so it extracts 0 bytes / garbage -> addon.xml is
+# truncated -> "invalid structure" (XML parse error) on install.
+# Repackage with the Info-ZIP CLI, which writes proper local file headers
+# (no data descriptor), matching the official addon ZIPs.
+REPACK_DIR="$( mktemp -d )"
+unzip -q "$SRC_ZIP" -d "$REPACK_DIR"
+rm -f "$DEST_ZIP"
+( cd "$REPACK_DIR" && zip -q -r -X "$DEST_ZIP" "$ADDON_NAME" )
+rm -rf "$REPACK_DIR"
 
 echo
 echo "==> Done. Installable ZIP:"

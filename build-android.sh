@@ -81,13 +81,25 @@ mkdir -p "$BUILD_DIR"
 # and depends sub-builds (not ANDROID_* / CPU). Setting everything here makes it
 # propagate everywhere, and relaxing the find-root modes lets the sub-builds
 # locate KodiConfig.cmake / rapidjson / tinyxml2 provided via CMAKE_PREFIX_PATH.
+#
+# Kodi_DIR is pinned to the cross-compiled depends tree so find_package(Kodi)
+# does NOT resolve to a host Kodi install (e.g. /usr/local/lib/kodi/cmake),
+# which would set PLATFORM=linux and emit library_linux/empty <platform> into
+# addon.xml -> Android install fails with "bad file structure".
 cat > "$TOOLCHAIN_FILE" <<EOF
 set(ANDROID_ABI $ANDROID_ABI CACHE STRING "")
 set(ANDROID_PLATFORM android-$ANDROID_API CACHE STRING "")
 set(CPU $CPU_TAG CACHE STRING "")
 set(CORE_SYSTEM_NAME android CACHE STRING "")
+# OS must be "android" so Kodi's AddonHelpers applies the mandatory "lib"
+# prefix to the shared library (Android only loads libraries named lib*.so).
+# Without this the addon.xml gets library_android="pvr.magenta.so" and the file
+# is pvr.magenta.so -> Kodi on Android rejects it as "bad file structure".
+set(OS android CACHE STRING "")
 
 include($NDK_TOOLCHAIN)
+
+set(Kodi_DIR "$BUILD_DIR/build/depends/lib/kodi" CACHE PATH "" FORCE)
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM BOTH)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
@@ -117,7 +129,19 @@ fi
 VERSION="$( basename "$SRC_ZIP" .zip )"
 VERSION="${VERSION#"$ADDON_NAME"-}"            # strip leading "pvr.magenta-"
 DEST_ZIP="$SCRIPT_DIR/$ADDON_NAME-$VERSION-android-$ANDROID_ABI.zip"
-cp -f "$SRC_ZIP" "$DEST_ZIP"
+
+# CMake/CPack writes the ZIP in streaming mode: every entry gets the data
+# descriptor bit (general purpose flag bit 3) set and a compressed size of 0 in
+# the local file header. Kodi's own CZipManager reads the compressed size from
+# the local file header, so it extracts 0 bytes / garbage -> addon.xml is
+# truncated -> "invalid structure" (XML parse error) on install.
+# Repackage with the Info-ZIP CLI, which writes proper local file headers
+# (no data descriptor), matching the official addon ZIPs.
+REPACK_DIR="$( mktemp -d )"
+unzip -q "$SRC_ZIP" -d "$REPACK_DIR"
+rm -f "$DEST_ZIP"
+( cd "$REPACK_DIR" && zip -q -r -X "$DEST_ZIP" "$ADDON_NAME" )
+rm -rf "$REPACK_DIR"
 
 echo
 echo "==> Done. Installable ZIP:"

@@ -45,3 +45,6 @@ v21.9.4
 - Protect against empty thumbnails
 v21.9.5
 - Block UHD channels
+v22.0.0
+- Kodi 22 (Piers) support
+- Use inputstream.adaptive.drm property for Widevine on Kodi 22

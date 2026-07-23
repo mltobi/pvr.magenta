@@ -5,6 +5,11 @@
 This is a Magenta PVR client addon for Kodi. It provides Kodi integration for the streaming provider [Magenta TV](https://www.telekom.de/magenta-tv). A user account / paid subscription is required to use this addon. The content is geo-blocked and DRM protected. Therefore it requires inputstream adaptive in combination with widevine.
 Versions from 21.9.0 also support Magenta TV 2.0. For Magenta TV 2.0 you have to provide your username and password. After entering your credentials you have to restart Kodi.
 
+Version 22.0.0 adds support for Kodi 22 (Piers). On Kodi 22 the addon uses the
+new `inputstream.adaptive.drm` property for Widevine (the legacy `license_*`
+properties were removed upstream). The correct code path is selected
+automatically at build time based on the Kodi version.
+
 ## Features 1.0
 - Live TV
 - EPG
@@ -47,7 +52,8 @@ add-on ZIP in one step:
 ```
 
 The build type defaults to `Release` (override with `BUILD_TYPE=Debug`). The
-installable ZIP is printed at the end of the build (under `build-linux/build/zips/`).
+script copies the finished, installable ZIP to the repository root as
+`pvr.magenta-<version>-linux.zip` and prints its path at the end.
 
 ### Android
 
@@ -64,12 +70,14 @@ export ANDROID_API=29                                    # optional (default: 29
 ```
 
 Supported `ANDROID_ABI` values: `arm64-v8a` (default, e.g. NVIDIA Shield),
-`armeabi-v7a`, `x86_64`, `x86`. The installable ZIP is printed at the end of the
-build (under `build-android-<abi>/build/zips/`).
+`armeabi-v7a`, `x86_64`, `x86`. The script copies the finished, installable ZIP
+to the repository root as `pvr.magenta-<version>-android-<abi>.zip` and prints
+its path at the end.
 
 ## Notes
 
 - Tested building it for Linux/x86 and Android/aarch64
+- Kodi 22 (Piers) support since 22.0.0
 - Depends on inputstream addon
 - Depends on widevine
 
