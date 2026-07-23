@@ -43,11 +43,25 @@ echo "    Build dir   : $BUILD_DIR"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
+# ---- force a native host build ---------------------------------------------
+# Ignore any cross-compilation environment left over from an Android build
+# (CC / CXX / CMAKE_TOOLCHAIN_FILE pointing at the NDK). cmake/addons forwards
+# only CMAKE_TOOLCHAIN_FILE to the addon sub-build, so the host compiler must be
+# provided via the environment to reach every sub-build; otherwise a polluted
+# shell silently produces an aarch64 .so that Kodi cannot load on x86-64
+# ("cannot open shared object file").
+unset CMAKE_TOOLCHAIN_FILE
+export CC="${HOST_CC:-$(command -v gcc || command -v cc)}"
+export CXX="${HOST_CXX:-$(command -v g++ || command -v c++)}"
+echo "    Host CC/CXX  : $CC / $CXX"
+
 # ---- configure & build ------------------------------------------------------
 cmake -B "$BUILD_DIR" -S "$ADDON_BUILD_SYSTEM" \
   -DADDONS_TO_BUILD="$ADDON_NAME" \
   -DADDON_SRC_PREFIX="$( cd "$SCRIPT_DIR/.." && pwd -P )" \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+  -DCMAKE_C_COMPILER="$CC" \
+  -DCMAKE_CXX_COMPILER="$CXX" \
   -DCMAKE_INSTALL_PREFIX="$BUILD_DIR/addons" \
   -DPACKAGE_ZIP=1
 
