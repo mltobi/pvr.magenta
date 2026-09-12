@@ -1,0 +1,103 @@
+name: Build LibreELEC Addon
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_call:
+
+env:
+  app_id: pvr.ultimate
+  LE_VERSION: "13.0"
+  PROJECT: "RPi"
+  DEVICE: "RPi4"
+  ARCH: "aarch64"
+
+jobs:
+  build-libreelec:
+    runs-on: ubuntu-latest
+    container:
+      image: libreelec/build:latest # Offizieller LE-Build-Container mit allen Abhängigkeiten
+
+    steps:
+      - name: Checkout Add-on Repository
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.app_id }}
+
+      - name: Checkout LibreELEC Source
+        uses: actions/checkout@v4
+        with:
+          repository: LibreELEC/LibreELEC.tv
+          ref: libreelec-${{ env.LE_VERSION }} # Checkt die Codebasis für LE13 aus
+          path: LibreELEC.tv
+
+      - name: Setup LibreELEC Environment
+        run: |
+          cd LibreELEC.tv
+          # Initialisiert die Projektkonfiguration für RPi4.aarch64
+          PROJECT=${{ env.PROJECT }} DEVICE=${{ env.DEVICE }} ARCH=${{ env.ARCH }} ./tools/setup-builddir
+        shell: bash
+
+      - name: Inject Add-on into LibreELEC Build System
+        run: |
+          # Erstellt das Package-Verzeichnis im LibreELEC-Tree
+          mkdir -p LibreELEC.tv/packages/addons/pvr/${{ env.app_id }}
+          
+          # Erstellt die package.mk für das Add-on, damit LibreELEC weiß, wie es zu bauen ist
+          cat << 'EOF' > LibreELEC.tv/packages/addons/pvr/${{ env.app_id }}/package.mk
+          PKG_NAME="${{ env.app_id }}"
+          PKG_VERSION="local"
+          PKG_LICENSE="GPL-2.0-or-later"
+          PKG_SITE="local"
+          PKG_URL="local"
+          PKG_DEPENDS_TARGET="toolchain nlohmann-json flatbuffers kodi"
+          PKG_PRIORITY="optional"
+          PKG_SECTION="addons"
+          
+          # Verweist auf das vom Runner ausgecheckte Add-on-Verzeichnis
+          PKG_BUILD_DIR="${{ github.workspace }}/${{ env.app_id }}"
+          
+          make_target() {
+            # Da es ein CMake-Addon ist, nutzt das LE-System automatisch die korrekte Cross-Toolchain
+            cmake_target
+          }
+          EOF
+        shell: bash
+
+      - name: Build Add-on via LibreELEC Toolchain
+        run: |
+          cd LibreELEC.tv
+          # Baut die Toolchain und das Add-on für das Zielgerät.
+          # Das LibreELEC-System löst 'nlohmann-json' und 'flatbuffers' automatisch für aarch64 auf.
+          PROJECT=${{ env.PROJECT }} DEVICE=${{ env.DEVICE }} ARCH=${{ env.ARCH }} ./image make ${{ env.app_id }}
+        shell: bash
+
+      - name: Locate and Package Zip Artifact
+        id: package-step
+        run: |
+          # LibreELEC legt das fertige Kodi-Addon-Verzeichnis im target-Ordner ab
+          BUILD_OUT_DIR=$(find LibreELEC.tv/build.* -name "${{ env.app_id }}" -type d | grep "install_" | head -n 1)
+          
+          if [ -z "$BUILD_OUT_DIR" ]; then
+            echo "Build output directory not found!"
+            exit 1
+          fi
+          
+          # Version aus der fertigen addon.xml auslesen
+          ADDON_XML="$BUILD_OUT_DIR/addon.xml"
+          ADDON_VERSION=$(python3 -c "import xml.etree.ElementTree as ET; print(ET.parse('$ADDON_XML').getroot().attrib['version'])")
+          
+          echo "Found version: $ADDON_VERSION"
+          mkdir -p zip_out
+          
+          # Verpacken als kompatibles Kodi-Zip-Archiv
+          cd $(dirname "$BUILD_OUT_DIR")
+          zip -r "${{ github.workspace }}/zip_out/${{ env.app_id }}-${ADDON_VERSION}-LibreELEC-RPi4.aarch64.zip" "${{ env.app_id }}"
+        shell: bash
+
+      - name: Upload LibreELEC Zip Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pvr.ultimate-LibreELEC-RPi4.aarch64
+          path: zip_out/*.zip
